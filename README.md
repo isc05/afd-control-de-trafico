@@ -1,44 +1,39 @@
-# Simulador AFD para control de tráfico
+# Sistema Inteligente de Tráfico con AFD
 
-Aplicación de escritorio que simula un autómata finito determinista (AFD) para representar la secuencia de un semáforo en una intersección. La interfaz permite introducir una cadena, procesarla paso a paso y visualizar tanto las transiciones como el estado del autómata.
+Aplicación de escritorio educativa que combina un autómata finito determinista (AFD) con una simulación visual simplificada de una intersección. Primero se valida una secuencia de configuración de las luces; si la cadena es aceptada, se puede simular el tránsito de vehículos con esos tiempos y una densidad seleccionable.
 
-## Funcionamiento
+> Esta aplicación es una demostración académica. Su modelo simplificado no es un controlador de tráfico real ni está diseñado para tomar decisiones de seguridad vial.
 
-El autómata modela dos sentidos de circulación, norte-sur (N-S) y este-oeste (E-O). Su alfabeto contiene un único símbolo:
+## Qué hace
 
-- `t`: expiración del temporizador del semáforo.
+### Validación de la configuración
 
-Cada `t` avanza el ciclo de luces:
+El AFD representa las fases del semáforo para el sentido norte-sur:
 
-| Estado | Semáforo N-S | Semáforo E-O | Siguiente estado con `t` |
-| --- | --- | --- | --- |
-| `q0` | Verde | Rojo | `q1` |
-| `q1` | Amarillo | Rojo | `q2` |
-| `q2` | Rojo | Verde | `q3` |
-| `q3` | Rojo | Amarillo | `q0` |
-| `q_err` | Estado de error | Estado de error | `q_err` |
+| Estado | Fase | Transiciones |
+| --- | --- | --- |
+| `q0` | Inicio | `v` → `qV` |
+| `qV` | Verde | `t` → `qV`; `a` → `qA` |
+| `qA` | Amarillo | `t` → `qA`; `r` → `qR` |
+| `qR` | Rojo | `t` → `qR`; `v` → `qV` para iniciar otro ciclo |
+| `q_err` | Error | Estado al que llega cualquier símbolo sin transición válida |
 
-El estado inicial es `q0`. Los estados `q0`, `q1`, `q2` y `q3` son de aceptación; una entrada que contenga un símbolo distinto de `t` lleva al estado de error y es rechazada. En la interfaz se debe ingresar una cadena no vacía, por ejemplo `tttt`.
+- `v`, `a` y `r` representan verde, amarillo y rojo.
+- `t` representa un intervalo de tiempo en la fase actual; repetirlo alarga esa fase.
+- La cadena debe comenzar con `v`, seguir las fases en orden y terminar en `qR`, el único estado de aceptación. Por ejemplo, `vttatrtt` es válida: asigna dos intervalos al verde, uno al amarillo y dos al rojo.
+- Las mayúsculas se aceptan porque los símbolos se convierten a minúsculas. Cualquier otro símbolo lleva la cadena al estado de error.
+- La interfaz muestra el recorrido por el AFD paso a paso y señala si la configuración fue aceptada.
 
-La aplicación presenta un grafo de estados, resalta el estado actual, registra cada transición y procesa la entrada con una pausa de un segundo entre pasos. Al terminar, indica si la entrada fue aceptada.
+### Simulación de la intersección
 
-## Estructura del proyecto
+Después de validar una cadena, el botón **Simular Tráfico** permite ver una intersección con circulación norte-sur y este-oeste. Los intervalos `t` contados para cada color determinan la duración de las fases. Se puede seleccionar una densidad de sensores **Baja**, **Media** o **Alta**; la llegada de vehículos y sus colores se generan aleatoriamente.
 
-```text
-.
-├── main.py             # Punto de entrada; crea la ventana y ejecuta el bucle de Tkinter
-├── requirements.txt    # Dependencias de Python
-└── src/
-    ├── __init__.py
-    ├── automata.py     # Estados, alfabeto y lógica de transición del AFD
-    └── gui.py          # Interfaz Tkinter y visualización del grafo
-```
+La simulación anima los vehículos, aplica las luces y una distancia de seguridad simplificada, y muestra avisos si detecta una colisión o un atasco severo. Finaliza al completar su número máximo de pasos o antes si detecta una de esas condiciones.
 
 ## Requisitos
 
-- Python 3 instalado y disponible como `python` (en Windows también puede usarse `py`).
-- Tkinter, necesario para la interfaz gráfica. En Windows suele venir incluido con la instalación estándar de Python; en Linux puede requerir el paquete del sistema `python3-tk`.
-- Las dependencias listadas en `requirements.txt`: Matplotlib y NetworkX, junto con sus dependencias.
+- Python 3 con soporte para Tkinter.
+- No se requieren paquetes externos de Python. `tkinter`, `math` y `random` pertenecen a la biblioteca estándar. En algunas distribuciones de Linux, Tkinter se instala por separado como paquete del sistema (por ejemplo, `python3-tk`).
 
 ## Instalación y ejecución
 
@@ -49,7 +44,7 @@ git clone <URL-del-repositorio>
 cd practica3-automatas-finitos-control-trafico
 ```
 
-Crea y activa un entorno virtual. En Windows PowerShell:
+Opcionalmente, crea y activa un entorno virtual. En Windows PowerShell:
 
 ```powershell
 py -m venv .venv
@@ -63,18 +58,22 @@ python3 -m venv .venv
 source .venv/bin/activate
 ```
 
-Instala las dependencias y ejecuta la aplicación:
+`requirements.txt` se conserva para documentar que no hay dependencias instalables con pip. No es necesario instalar paquetes; ejecuta la aplicación con:
 
 ```bash
-python -m pip install -r requirements.txt
 python main.py
 ```
 
-En Windows, si no activaste el entorno virtual, puedes ejecutar sus herramientas con rutas directas:
+En Windows también puedes usar `py main.py`. Se abrirá la ventana **Sistema Inteligente de Tráfico - AFD**. Introduce una cadena, selecciona la densidad y pulsa **1. Validar AFD**. Si se acepta, pulsa **2. Simular Tráfico** para iniciar la animación.
 
-```powershell
-.\.venv\Scripts\python.exe -m pip install -r requirements.txt
-.\.venv\Scripts\python.exe main.py
+## Estructura
+
+```text
+.
+├── main.py             # Punto de entrada de la aplicación Tkinter
+├── requirements.txt    # Indica que no hay dependencias externas de pip
+└── src/
+    ├── __init__.py
+    ├── automata.py     # Estados, transiciones, aceptación y conteo de intervalos
+    └── gui.py          # Interfaz, visualización del AFD y simulación de tráfico
 ```
-
-Se abrirá la ventana **Simulador AFD - Control de Tráfico**. Escribe una cadena formada únicamente por `t` y selecciona **Evaluar Entrada** para observar el recorrido.
