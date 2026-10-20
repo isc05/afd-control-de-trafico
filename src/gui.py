@@ -6,25 +6,28 @@ from src.automata import TrafficAutomaton
 
 class TrafficDFA_GUI:
     """
-    Interfaz Gráfica de Usuario que integra la validación del AFD y 
+    Interfaz Gráfica de Usuario que integra la validación del AFD estricto y 
     la simulación del flujo de tráfico en una intersección con colas vehiculares.
     """
     def __init__(self, root: tk.Tk):
         self.root = root
         self.root.title("Sistema Inteligente de Tráfico - AFD")
-        self.root.geometry("800x650")
+        self.root.geometry("820x650")
         
         self.automaton = TrafficAutomaton()
-        self.node_radius = 30
+        self.node_radius = 28
         
         self.setup_ui()
         self.draw_dfa()
 
     def setup_ui(self):
+        """
+        Inicializa y organiza los componentes visuales de la interfaz.
+        """
         control_frame = ttk.LabelFrame(self.root, text="Configuración del Sistema", padding="10")
         control_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Label(control_frame, text="Cadena (Ej. vttatrtt):").grid(row=0, column=0, padx=5)
+        ttk.Label(control_frame, text="Cadena (Ej. vtatrt):").grid(row=0, column=0, padx=5)
         self.entry_input = ttk.Entry(control_frame, width=25)
         self.entry_input.grid(row=0, column=1, padx=5)
 
@@ -46,7 +49,7 @@ class TrafficDFA_GUI:
         self.tab_dfa = ttk.Frame(self.notebook)
         self.notebook.add(self.tab_dfa, text="Análisis AFD")
 
-        self.canvas_dfa = tk.Canvas(self.tab_dfa, bg="white", height=300)
+        self.canvas_dfa = tk.Canvas(self.tab_dfa, bg="white", height=320)
         self.canvas_dfa.pack(fill=tk.BOTH, expand=True)
 
         self.list_log = tk.Listbox(self.tab_dfa, height=6)
@@ -59,21 +62,30 @@ class TrafficDFA_GUI:
         self.canvas_traffic.pack(fill=tk.BOTH, expand=True)
 
     def draw_dfa(self, active_state: str = None, final_status: bool = None):
+        """
+        Renderiza el grafo del AFD respetando las convenciones formales de autómatas.
+        """
         self.canvas_dfa.delete("all")
         
         positions = {
-            'q0': (100, 150),
-            'qV': (300, 100),
-            'qA': (500, 150),
-            'qR': (300, 250),
-            'q_err': (100, 250)
+            'q0': (60, 150),
+            'qV': (170, 75),
+            'qVt': (320, 75),
+            'qA': (470, 75),
+            'qAt': (620, 150),
+            'qR': (470, 225),
+            'qRt': (320, 225),
+            'q_err': (170, 225)
         }
         
         labels = {
             'q0': "q0\nInicio",
             'qV': "qV\nVerde",
+            'qVt': "qVt\nT. Verde",
             'qA': "qA\nAmarillo",
+            'qAt': "qAt\nT. Amar.",
             'qR': "qR\nRojo",
+            'qRt': "qRt\nT. Rojo",
             'q_err': "q_err\nError"
         }
 
@@ -104,18 +116,23 @@ class TrafficDFA_GUI:
             
             if state == self.automaton.initial_state:
                 self.canvas_dfa.create_polygon(
-                    x - self.node_radius - 30, y - 10,
+                    x - self.node_radius - 25, y - 8,
                     x - self.node_radius, y,
-                    x - self.node_radius - 30, y + 10,
+                    x - self.node_radius - 25, y + 8,
                     fill="black"
                 )
             
-            self.canvas_dfa.create_text(x, y, text=labels[state], justify=tk.CENTER)
+            self.canvas_dfa.create_text(x, y, text=labels[state], justify=tk.CENTER, font=("Arial", 8, "bold"))
 
     def draw_edges(self, pos: dict):
+        """
+        Dibuja las aristas dirigidas y los bucles de transición entre los estados.
+        """
         transitions = [
-            ('q0', 'qV', 'v'), ('qV', 'qA', 'a'), 
-            ('qA', 'qR', 'r'), ('qR', 'qV', 'v')
+            ('q0', 'qV', 'v'), ('qV', 'qVt', 't'),
+            ('qVt', 'qA', 'a'), ('qA', 'qAt', 't'),
+            ('qAt', 'qR', 'r'), ('qR', 'qRt', 't'),
+            ('qRt', 'qV', 'v')
         ]
         
         for start, end, label in transitions:
@@ -133,18 +150,21 @@ class TrafficDFA_GUI:
             y2_adj = y2 - (dy / length) * self.node_radius
             
             self.canvas_dfa.create_line(x1_adj, y1_adj, x2_adj, y2_adj, arrow=tk.LAST, width=2)
-            self.canvas_dfa.create_text((x1_adj + x2_adj)/2, (y1_adj + y2_adj)/2 - 10, text=label, fill="blue")
+            self.canvas_dfa.create_text((x1_adj + x2_adj)/2, (y1_adj + y2_adj)/2 - 10, text=label, fill="blue", font=("Arial", 9, "bold"))
 
-        for state in ['qV', 'qA', 'qR']:
+        for state in ['qVt', 'qAt', 'qRt']:
             x, y = pos[state]
             self.canvas_dfa.create_arc(
-                x - 20, y - self.node_radius - 30,
-                x + 20, y - self.node_radius + 10,
+                x - 15, y - self.node_radius - 25,
+                x + 15, y - self.node_radius + 5,
                 start=0, extent=270, style=tk.ARC, outline="blue", width=2
             )
-            self.canvas_dfa.create_text(x, y - self.node_radius - 20, text='t', fill="blue")
+            self.canvas_dfa.create_text(x, y - self.node_radius - 18, text='t', fill="blue", font=("Arial", 9, "bold"))
 
     def start_dfa_simulation(self):
+        """
+        Prepara el proceso de evaluación y lectura de la cadena por el AFD.
+        """
         self.btn_simulate_dfa.config(state=tk.DISABLED)
         self.btn_run_traffic.config(state=tk.DISABLED)
         self.list_log.delete(0, tk.END)
@@ -153,7 +173,7 @@ class TrafficDFA_GUI:
         self.notebook.select(self.tab_dfa)
         input_string = self.entry_input.get().strip()
         
-        self.list_log.insert(tk.END, f"Inicio. Estado: {self.automaton.current_state}")
+        self.list_log.insert(tk.END, f"Inicio. Estado inicial: {self.automaton.current_state}")
         self.draw_dfa(active_state=self.automaton.current_state)
         
         if not input_string:
@@ -163,6 +183,9 @@ class TrafficDFA_GUI:
         self.root.after(800, self.simulate_dfa_step, input_string, 0)
 
     def simulate_dfa_step(self, input_string: str, index: int):
+        """
+        Procesa individualmente cada símbolo de la cadena de entrada.
+        """
         if index < len(input_string):
             char = input_string[index]
             prev_state = self.automaton.current_state
@@ -177,10 +200,13 @@ class TrafficDFA_GUI:
             self.finish_dfa_simulation()
 
     def finish_dfa_simulation(self):
+        """
+        Evalúa si el autómata se encuentra en un estado final de aceptación.
+        """
         is_valid = self.automaton.is_accepted()
         
         if is_valid:
-            self.list_log.insert(tk.END, "CADENA VÁLIDA. Tiempos configurados correctamente.")
+            self.list_log.insert(tk.END, "CADENA VÁLIDA. Tiempos e intervalos aceptados.")
             self.btn_run_traffic.config(state=tk.NORMAL)
         else:
             self.list_log.insert(tk.END, "CADENA INVÁLIDA. Configuración rechazada.")
@@ -190,6 +216,9 @@ class TrafficDFA_GUI:
         self.btn_simulate_dfa.config(state=tk.NORMAL)
 
     def start_traffic_simulation(self):
+        """
+        Inicializa las variables físicas de la animación de tráfico en la intersección.
+        """
         self.notebook.select(self.tab_traffic)
         self.canvas_traffic.delete("all")
         self.btn_run_traffic.config(state=tk.DISABLED)
@@ -212,12 +241,18 @@ class TrafficDFA_GUI:
         self.run_traffic_tick()
 
     def draw_intersection(self):
+        """
+        Dibuja los carril y señalizaciones viales de la intersección en pantalla.
+        """
         self.canvas_traffic.create_rectangle(340, 0, 460, 600, fill="#333333", outline="")
         self.canvas_traffic.create_rectangle(0, 200, 800, 320, fill="#333333", outline="")
         self.canvas_traffic.create_line(400, 0, 400, 600, fill="yellow", dash=(10, 10))
         self.canvas_traffic.create_line(0, 260, 800, 260, fill="yellow", dash=(10, 10))
 
     def update_lights(self):
+        """
+        Actualiza el estado de las luces en función de los tiempos 't' calculados.
+        """
         t_multiplier = 20 
         current_max = self.timings[self.light_state_NS] * t_multiplier
         
@@ -251,6 +286,9 @@ class TrafficDFA_GUI:
         self.canvas_traffic.create_oval(470, 170, 490, 190, fill=colors[self.light_state_EW], tags="lights")
 
     def run_traffic_tick(self):
+        """
+        Ejecuta el bucle de físicas para simulación de movimiento y colas vehiculares.
+        """
         if self.simulation_ticks > self.max_ticks:
             messagebox.showinfo("Éxito", "Simulación completada.\nObjetivo cumplido: El tráfico fluyó eficientemente sin accidentes.")
             self.btn_run_traffic.config(state=tk.NORMAL)
@@ -271,7 +309,6 @@ class TrafficDFA_GUI:
         for i, car in enumerate(self.cars):
             can_move = True
             
-            # 1. Regla del semáforo
             if car['dir'] == 'NS':
                 if 170 < car['y'] < 190 and self.light_state_NS in ['r', 'a']:
                     can_move = False
@@ -279,20 +316,18 @@ class TrafficDFA_GUI:
                 if 310 < car['x'] < 330 and self.light_state_EW in ['r', 'a']:
                     can_move = False
 
-            # 2. Regla de distancia de seguridad (evita solapamiento)
             if can_move:
                 for j, other_car in enumerate(self.cars):
                     if i != j and car['dir'] == other_car['dir']:
                         if car['dir'] == 'NS':
-                            if 0 < other_car['y'] - car['y'] < 35:
+                            if 0 < other_car['y'] - car['y'] < 25:
                                 can_move = False
                                 break
                         elif car['dir'] == 'EW':
-                            if 0 < other_car['x'] - car['x'] < 35:
+                            if 0 < other_car['x'] - car['x'] < 25:
                                 can_move = False
                                 break
 
-            # 3. Movimiento y atascos
             if can_move:
                 car['x'] += car['dx']
                 car['y'] += car['dy']
@@ -328,6 +363,9 @@ class TrafficDFA_GUI:
         self.root.after(50, self.run_traffic_tick)
 
     def spawn_car(self):
+        """
+        Genera un vehículo en los extremos de la vía respetando la separación inicial.
+        """
         direction = random.choice(['NS', 'EW'])
         color = random.choice(["#5C6BC0", "#E0E0E0", "#FFA726", "#26C6DA", "#EF5350"])
         
@@ -336,13 +374,12 @@ class TrafficDFA_GUI:
         else:
             car = {'x': 0, 'y': 225, 'dx': 5, 'dy': 0, 'dir': 'EW', 'color': color, 'wait_time': 0}
             
-        # Solo agregar el coche si no hay otro bloqueando el punto de inicio
         space_clear = True
         for c in self.cars:
             if c['dir'] == direction:
-                if direction == 'NS' and c['y'] < 35:
+                if direction == 'NS' and c['y'] < 25:
                     space_clear = False
-                elif direction == 'EW' and c['x'] < 35:
+                elif direction == 'EW' and c['x'] < 25:
                     space_clear = False
                     
         if space_clear:
