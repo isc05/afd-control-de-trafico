@@ -1,16 +1,14 @@
-"""
-Módulo main.py
-Punto de entrada de la aplicación.
-"""
-
 import tkinter as tk
-from src.gui import InterfazAutomata
+from src.gui import TrafficDFA_GUI
 
 def main():
-    """Función principal que inicializa la interfaz gráfica."""
+    """
+    Punto de entrada de la aplicación.
+    """
     root = tk.Tk()
-    app = InterfazAutomata(root)
+    app = TrafficDFA_GUI(root)
     root.mainloop()
 
+    
 if __name__ == "__main__":
     main()

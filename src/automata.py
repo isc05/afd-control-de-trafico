@@ -1,71 +1,61 @@
-"""
-Módulo automata.py
-Implementa la lógica del Autómata Finito Determinista para el control de tráfico.
-"""
-
-class AutomataTrafico:
+class TrafficAutomaton:
     """
-    Clase que representa el AFD del sistema de semáforos.
-    
-    Estados:
-    q0: Verde (N-S), Rojo (E-O)
-    q1: Amarillo (N-S), Rojo (E-O)
-    q2: Rojo (N-S), Verde (E-O)
-    q3: Rojo (N-S), Amarillo (E-O)
-    q_err: Estado de error (entrada no válida)
+    Autómata Finito Determinista para validar cadenas de configuración
+    de un semáforo inteligente.
+    Alfabeto: {v, a, r, t}
     """
-
     def __init__(self):
-        """Inicializa los componentes formales del AFD."""
-        self.estados = ['q0', 'q1', 'q2', 'q3', 'q_err']
-        self.alfabeto = ['t']  # 't' representa la expiración del temporizador
-        self.estado_inicial = 'q0'
-        self.estados_aceptacion = ['q0', 'q1', 'q2', 'q3']
+        self.states = {'q0', 'qV', 'qA', 'qR', 'q_err'}
+        self.initial_state = 'q0'
+        self.final_states = {'qR'}
+        self.current_state = self.initial_state
         
-        self.transiciones = {
-            'q0': {'t': 'q1'},
-            'q1': {'t': 'q2'},
-            'q2': {'t': 'q3'},
-            'q3': {'t': 'q0'}
+        self.transitions = {
+            ('q0', 'v'): 'qV',
+            ('qV', 't'): 'qV',
+            ('qV', 'a'): 'qA',
+            ('qA', 't'): 'qA',
+            ('qA', 'r'): 'qR',
+            ('qR', 't'): 'qR',
+            ('qR', 'v'): 'qV' 
         }
-        
-        self.estado_actual = self.estado_inicial
-        self.historial_transiciones = []
 
-    def reiniciar(self):
-        """Restablece el autómata a su estado inicial para una nueva evaluación."""
-        self.estado_actual = self.estado_inicial
-        self.historial_transiciones = [(self.estado_inicial, None)]
-
-    def procesar_caracter(self, caracter):
+    def process_char(self, char: str) -> str:
         """
-        Procesa un único carácter de entrada y actualiza el estado actual.
-        
-        Args:
-            caracter (str): El símbolo de entrada a procesar.
-            
-        Returns:
-            str: El nuevo estado tras la transición.
+        Procesa un carácter de entrada y evalúa la transición de estado.
         """
-        if self.estado_actual == 'q_err':
-            self.historial_transiciones.append((self.estado_actual, caracter))
-            return self.estado_actual
-
-        estado_siguiente = self.transiciones.get(self.estado_actual, {}).get(caracter)
-        
-        if estado_siguiente:
-            self.estado_actual = estado_siguiente
+        char = char.lower()
+        if (self.current_state, char) in self.transitions:
+            self.current_state = self.transitions[(self.current_state, char)]
         else:
-            self.estado_actual = 'q_err'
+            self.current_state = 'q_err'
             
-        self.historial_transiciones.append((self.estado_actual, caracter))
-        return self.estado_actual
+        return self.current_state
 
-    def es_valido(self):
+    def reset(self):
         """
-        Verifica si el estado actual al finalizar la cadena es un estado de aceptación.
+        Restablece el autómata a su estado inicial.
+        """
+        self.current_state = self.initial_state
+
+    def is_accepted(self) -> bool:
+        """
+        Determina si el estado actual es un estado de aceptación.
+        """
+        return self.current_state in self.final_states
+
+    def extract_timings(self, input_string: str) -> dict:
+        """
+        Extrae la cantidad de 't' (tiempos) asignados a cada color a partir
+        de una cadena válida.
+        """
+        timings = {'v': 0, 'a': 0, 'r': 0}
+        current_color = None
         
-        Returns:
-            bool: True si la cadena es válida, False de lo contrario.
-        """
-        return self.estado_actual in self.estados_aceptacion
+        for char in input_string.lower():
+            if char in ['v', 'a', 'r']:
+                current_color = char
+            elif char == 't' and current_color:
+                timings[current_color] += 1
+                
+        return timings
