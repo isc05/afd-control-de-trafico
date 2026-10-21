@@ -2,385 +2,293 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 import math
 import random
-from src.automata import TrafficAutomaton
+from src.automata import IntelligentTrafficAutomaton
+
 
 class TrafficDFA_GUI:
     """
-    Interfaz Gráfica de Usuario que integra la validación del AFD estricto y 
-    la simulación del flujo de tráfico en una intersección con colas vehiculares.
+    Clase que gestiona la representacion visual y concurrente del Automata Finito
+    y el flujo fisico de vehiculos en la interseccion.
     """
+
     def __init__(self, root: tk.Tk):
         self.root = root
-        self.root.title("Sistema Inteligente de Tráfico - AFD")
-        self.root.geometry("820x650")
-        
-        self.automaton = TrafficAutomaton()
+        self.root.title("Semaforo Inteligente - Evaluacion Dinamica mediante AFD")
+        self.root.geometry("1300x700")
+
+        self.automaton = IntelligentTrafficAutomaton()
         self.node_radius = 28
-        
+        self.is_running = False
+
         self.setup_ui()
-        self.draw_dfa()
+        self.draw_dfa(active_state=self.automaton.initial_state)
 
     def setup_ui(self):
         """
-        Inicializa y organiza los componentes visuales de la interfaz.
+        Estructura el layout principal dividiendo la pantalla en el panel de control,
+        la visualizacion del AFD y el lienzo de simulacion de trafico.
         """
-        control_frame = ttk.LabelFrame(self.root, text="Configuración del Sistema", padding="10")
+        control_frame = ttk.LabelFrame(self.root, text="Parametros de Simulacion", padding="10")
         control_frame.pack(fill=tk.X, padx=10, pady=5)
 
-        ttk.Label(control_frame, text="Cadena (Ej. vtatrt):").grid(row=0, column=0, padx=5)
-        self.entry_input = ttk.Entry(control_frame, width=25)
-        self.entry_input.grid(row=0, column=1, padx=5)
+        ttk.Label(control_frame, text="Temporizador Base (ticks):").grid(row=0, column=0, padx=5)
+        self.entry_timer = ttk.Entry(control_frame, width=10)
+        self.entry_timer.insert(0, "40")
+        self.entry_timer.grid(row=0, column=1, padx=5)
 
-        ttk.Label(control_frame, text="Densidad (Sensores):").grid(row=0, column=2, padx=5)
-        self.density_var = tk.StringVar(value="Media")
+        ttk.Label(control_frame, text="Afluencia Vial (RNG):").grid(row=0, column=2, padx=5)
+        self.density_var = tk.StringVar(value="Normal")
         self.cb_density = ttk.Combobox(control_frame, textvariable=self.density_var, 
-                                       values=["Baja", "Media", "Alta"], state="readonly", width=10)
+                                       values=["Poco", "Normal", "Mucho"], state="readonly", width=10)
         self.cb_density.grid(row=0, column=3, padx=5)
 
-        self.btn_simulate_dfa = ttk.Button(control_frame, text="1. Validar AFD", command=self.start_dfa_simulation)
-        self.btn_simulate_dfa.grid(row=0, column=4, padx=5)
+        self.lbl_q_ns = ttk.Label(control_frame, text="Fila N-S: 0", font=("Arial", 10, "bold"), foreground="blue")
+        self.lbl_q_ns.grid(row=0, column=4, padx=15)
 
-        self.btn_run_traffic = ttk.Button(control_frame, text="2. Simular Tráfico", command=self.start_traffic_simulation, state=tk.DISABLED)
-        self.btn_run_traffic.grid(row=0, column=5, padx=5)
+        self.lbl_q_ew = ttk.Label(control_frame, text="Fila E-O: 0", font=("Arial", 10, "bold"), foreground="green")
+        self.lbl_q_ew.grid(row=0, column=5, padx=15)
 
-        self.notebook = ttk.Notebook(self.root)
-        self.notebook.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
+        self.btn_toggle = ttk.Button(control_frame, text="Iniciar Sistema", command=self.toggle_simulation)
+        self.btn_toggle.grid(row=0, column=6, padx=15)
 
-        self.tab_dfa = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_dfa, text="Análisis AFD")
+        main_container = ttk.Frame(self.root)
+        main_container.pack(fill=tk.BOTH, expand=True, padx=10, pady=5)
 
-        self.canvas_dfa = tk.Canvas(self.tab_dfa, bg="white", height=320)
+        # Panel Izquierdo: AFD Concurrente
+        dfa_frame = ttk.LabelFrame(main_container, text="Representacion del AFD")
+        dfa_frame.pack(side=tk.LEFT, fill=tk.BOTH, expand=True, padx=(0, 5))
+
+        self.canvas_dfa = tk.Canvas(dfa_frame, bg="white")
         self.canvas_dfa.pack(fill=tk.BOTH, expand=True)
 
-        self.list_log = tk.Listbox(self.tab_dfa, height=6)
-        self.list_log.pack(fill=tk.X, side=tk.BOTTOM)
+        # Panel Derecho: Simulacion Fisica
+        traffic_frame = ttk.LabelFrame(main_container, text="Interseccion de Trafico")
+        traffic_frame.pack(side=tk.RIGHT, fill=tk.BOTH, expand=True, padx=(5, 0))
 
-        self.tab_traffic = ttk.Frame(self.notebook)
-        self.notebook.add(self.tab_traffic, text="Intersección de Tráfico")
-
-        self.canvas_traffic = tk.Canvas(self.tab_traffic, bg="#555555")
+        self.canvas_traffic = tk.Canvas(traffic_frame, bg="#424242", width=600, height=600)
         self.canvas_traffic.pack(fill=tk.BOTH, expand=True)
 
-    def draw_dfa(self, active_state: str = None, final_status: bool = None):
+        self.draw_intersection()
+
+    def draw_dfa(self, active_state: str = None):
         """
-        Renderiza el grafo del AFD respetando las convenciones formales de autómatas.
+        Renderiza el grafo del AFD. Plasma las rutas de transicion descriptivas y 
+        colorea el estado actual para reflejar el estado logico del semaforo en tiempo real.
         """
         self.canvas_dfa.delete("all")
-        
+
         positions = {
-            'q0': (60, 150),
-            'qV': (170, 75),
-            'qVt': (320, 75),
-            'qA': (470, 75),
-            'qAt': (620, 150),
-            'qR': (470, 225),
-            'qRt': (320, 225),
-            'q_err': (170, 225)
+            'q0': (150, 100),
+            'q1': (500, 100),
+            'q2': (500, 250),
+            'q3': (500, 400),
+            'q4': (150, 400),
+            'q5': (150, 250)
         }
-        
+
         labels = {
-            'q0': "q0\nInicio",
-            'qV': "qV\nVerde",
-            'qVt': "qVt\nT. Verde",
-            'qA': "qA\nAmarillo",
-            'qAt': "qAt\nT. Amar.",
-            'qR': "qR\nRojo",
-            'qRt': "qRt\nT. Rojo",
-            'q_err': "q_err\nError"
+            'q0': "q0\nVerde N-S",
+            'q1': "q1\nAmarillo N-S",
+            'q2': "q2\nRojo Global\n(Despeje N->E)",
+            'q3': "q3\nVerde E-O",
+            'q4': "q4\nAmarillo E-O",
+            'q5': "q5\nRojo Global\n(Despeje E->N)"
         }
 
         self.draw_edges(positions)
 
-        base_color = "#E0E0E0" 
-        if final_status is True:
-            base_color = "#A8E6CF"
-        elif final_status is False:
-            base_color = "#FF8B94"
-
         for state, (x, y) in positions.items():
-            fill_color = "#FFF59D" if state == active_state else base_color
-            
+            fill_color = "#FFF59D" if state == active_state else "#E0E0E0"
+
             self.canvas_dfa.create_oval(
-                x - self.node_radius, y - self.node_radius, 
-                x + self.node_radius, y + self.node_radius, 
+                x - self.node_radius, y - self.node_radius,
+                x + self.node_radius, y + self.node_radius,
                 fill=fill_color, outline="black", width=2
             )
-            
-            if state in self.automaton.final_states:
-                offset = 5
-                self.canvas_dfa.create_oval(
-                    x - self.node_radius + offset, y - self.node_radius + offset, 
-                    x + self.node_radius - offset, y + self.node_radius - offset, 
-                    outline="black", width=2
-                )
-            
+
             if state == self.automaton.initial_state:
                 self.canvas_dfa.create_polygon(
-                    x - self.node_radius - 25, y - 8,
+                    x - self.node_radius - 25, y - 10,
                     x - self.node_radius, y,
-                    x - self.node_radius - 25, y + 8,
-                    fill="black"
+                    x - self.node_radius - 25, y + 10,
+                    fill="blue", outline="black"
                 )
-            
+
             self.canvas_dfa.create_text(x, y, text=labels[state], justify=tk.CENTER, font=("Arial", 8, "bold"))
 
     def draw_edges(self, pos: dict):
         """
-        Dibuja las aristas dirigidas y los bucles de transición entre los estados.
+        Dibuja lineas direccionales con textos explicativos que definen las reglas de
+        evaluacion inteligente implementadas en el automata.
         """
-        transitions = [
-            ('q0', 'qV', 'v'), ('qV', 'qVt', 't'),
-            ('qVt', 'qA', 'a'), ('qA', 'qAt', 't'),
-            ('qAt', 'qR', 'r'), ('qR', 'qRt', 't'),
-            ('qRt', 'qV', 'v')
-        ]
-        
-        for start, end, label in transitions:
+        def draw_arrow(start, end, label, offset_x=0, offset_y=0):
             x1, y1 = pos[start]
             x2, y2 = pos[end]
             
+            x1 += offset_x; y1 += offset_y
+            x2 += offset_x; y2 += offset_y
+            
             dx, dy = x2 - x1, y2 - y1
             length = math.hypot(dx, dy)
-            
-            if length == 0: continue
-                
-            x1_adj = x1 + (dx / length) * self.node_radius
-            y1_adj = y1 + (dy / length) * self.node_radius
-            x2_adj = x2 - (dx / length) * self.node_radius
-            y2_adj = y2 - (dy / length) * self.node_radius
-            
-            self.canvas_dfa.create_line(x1_adj, y1_adj, x2_adj, y2_adj, arrow=tk.LAST, width=2)
-            self.canvas_dfa.create_text((x1_adj + x2_adj)/2, (y1_adj + y2_adj)/2 - 10, text=label, fill="blue", font=("Arial", 9, "bold"))
+            if length == 0: return
 
-        for state in ['qVt', 'qAt', 'qRt']:
-            x, y = pos[state]
-            self.canvas_dfa.create_arc(
-                x - 15, y - self.node_radius - 25,
-                x + 15, y - self.node_radius + 5,
-                start=0, extent=270, style=tk.ARC, outline="blue", width=2
-            )
-            self.canvas_dfa.create_text(x, y - self.node_radius - 18, text='t', fill="blue", font=("Arial", 9, "bold"))
+            adj_x1 = x1 + (dx / length) * self.node_radius
+            adj_y1 = y1 + (dy / length) * self.node_radius
+            adj_x2 = x2 - (dx / length) * self.node_radius
+            adj_y2 = y2 - (dy / length) * self.node_radius
 
-    def start_dfa_simulation(self):
-        """
-        Prepara el proceso de evaluación y lectura de la cadena por el AFD.
-        """
-        self.btn_simulate_dfa.config(state=tk.DISABLED)
-        self.btn_run_traffic.config(state=tk.DISABLED)
-        self.list_log.delete(0, tk.END)
-        self.automaton.reset()
+            self.canvas_dfa.create_line(adj_x1, adj_y1, adj_x2, adj_y2, arrow=tk.LAST, width=2)
+            self.canvas_dfa.create_text((adj_x1 + adj_x2) / 2, ((adj_y1 + adj_y2) / 2) - 15, text=label, fill="blue", font=("Arial", 8, "bold"))
+
+        draw_arrow('q0', 'q1', "Temporizador Expirado", offset_y=-10)
+        draw_arrow('q1', 'q0', "Evaluacion Amarilla:\nFila N-S >= Fila E-O\n(Mantiene Prioridad N-S)", offset_y=15)
+        draw_arrow('q1', 'q2', "Evaluacion Amarilla:\nFila E-O > Fila N-S\n(Cede Paso a E-O)")
+        draw_arrow('q2', 'q3', "Termina Despeje")
         
-        self.notebook.select(self.tab_dfa)
-        input_string = self.entry_input.get().strip()
-        
-        self.list_log.insert(tk.END, f"Inicio. Estado inicial: {self.automaton.current_state}")
-        self.draw_dfa(active_state=self.automaton.current_state)
-        
-        if not input_string:
-            self.finish_dfa_simulation()
-            return
+        draw_arrow('q3', 'q4', "Temporizador Expirado", offset_y=15)
+        draw_arrow('q4', 'q3', "Evaluacion Amarilla:\nFila E-O >= Fila N-S\n(Mantiene Prioridad E-O)", offset_y=-15)
+        draw_arrow('q4', 'q5', "Evaluacion Amarilla:\nFila N-S > Fila E-O\n(Cede Paso a N-S)")
+        draw_arrow('q5', 'q0', "Termina Despeje")
 
-        self.root.after(800, self.simulate_dfa_step, input_string, 0)
-
-    def simulate_dfa_step(self, input_string: str, index: int):
+    def toggle_simulation(self):
         """
-        Procesa individualmente cada símbolo de la cadena de entrada.
+        Controla el encendido y apagado de la ejecucion concurrente.
         """
-        if index < len(input_string):
-            char = input_string[index]
-            prev_state = self.automaton.current_state
-            new_state = self.automaton.process_char(char)
-            
-            self.list_log.insert(tk.END, f"Lee '{char}': {prev_state} ---> {new_state}")
-            self.list_log.yview(tk.END)
-            
-            self.draw_dfa(active_state=new_state)
-            self.root.after(800, self.simulate_dfa_step, input_string, index + 1)
+        if self.is_running:
+            self.is_running = False
+            self.btn_toggle.config(text="Iniciar Sistema")
         else:
-            self.finish_dfa_simulation()
+            try:
+                self.timer_limit = int(self.entry_timer.get())
+            except ValueError:
+                messagebox.showerror("Error", "El temporizador debe ser un numero entero.")
+                return
 
-    def finish_dfa_simulation(self):
-        """
-        Evalúa si el autómata se encuentra en un estado final de aceptación.
-        """
-        is_valid = self.automaton.is_accepted()
-        
-        if is_valid:
-            self.list_log.insert(tk.END, "CADENA VÁLIDA. Tiempos e intervalos aceptados.")
-            self.btn_run_traffic.config(state=tk.NORMAL)
-        else:
-            self.list_log.insert(tk.END, "CADENA INVÁLIDA. Configuración rechazada.")
+            self.is_running = True
+            self.btn_toggle.config(text="Detener Sistema")
+            self.entry_timer.config(state=tk.DISABLED)
             
-        self.list_log.yview(tk.END)
-        self.draw_dfa(active_state=None, final_status=is_valid)
-        self.btn_simulate_dfa.config(state=tk.NORMAL)
-
-    def start_traffic_simulation(self):
-        """
-        Inicializa las variables físicas de la animación de tráfico en la intersección.
-        """
-        self.notebook.select(self.tab_traffic)
-        self.canvas_traffic.delete("all")
-        self.btn_run_traffic.config(state=tk.DISABLED)
-        
-        input_string = self.entry_input.get()
-        self.timings = self.automaton.extract_timings(input_string)
-        
-        density_map = {"Baja": 0.02, "Media": 0.05, "Alta": 0.1}
-        self.spawn_rate = density_map.get(self.density_var.get(), 0.05)
-        
-        self.cars = []
-        self.simulation_ticks = 0
-        self.max_ticks = 300 
-        
-        self.light_state_NS = 'v'
-        self.light_state_EW = 'r'
-        self.ticks_in_current_light = 0
-
-        self.draw_intersection()
-        self.run_traffic_tick()
+            self.cars = []
+            self.state_ticks = 0
+            self.automaton.reset()
+            self.canvas_traffic.delete("car")
+            self.draw_dfa(active_state=self.automaton.current_state)
+            self.run_traffic_tick()
 
     def draw_intersection(self):
         """
-        Dibuja los carril y señalizaciones viales de la intersección en pantalla.
+        Renderiza las calzadas para la animacion fisica del trafico.
         """
-        self.canvas_traffic.create_rectangle(340, 0, 460, 600, fill="#333333", outline="")
-        self.canvas_traffic.create_rectangle(0, 200, 800, 320, fill="#333333", outline="")
-        self.canvas_traffic.create_line(400, 0, 400, 600, fill="yellow", dash=(10, 10))
-        self.canvas_traffic.create_line(0, 260, 800, 260, fill="yellow", dash=(10, 10))
+        self.canvas_traffic.create_rectangle(240, 0, 360, 600, fill="#333333", outline="")
+        self.canvas_traffic.create_rectangle(0, 240, 600, 360, fill="#333333", outline="")
+        self.canvas_traffic.create_line(300, 0, 300, 600, fill="yellow", dash=(10, 10))
+        self.canvas_traffic.create_line(0, 300, 600, 300, fill="yellow", dash=(10, 10))
 
-    def update_lights(self):
+    def update_traffic_lights(self, state: str):
         """
-        Actualiza el estado de las luces en función de los tiempos 't' calculados.
+        Sincroniza los focos graficos con el estado del AFD.
         """
-        t_multiplier = 20 
-        current_max = self.timings[self.light_state_NS] * t_multiplier
-        
-        self.ticks_in_current_light += 1
-        if self.ticks_in_current_light >= current_max:
-            self.ticks_in_current_light = 0
-            if self.light_state_NS == 'v':
-                self.light_state_NS = 'a'
-            elif self.light_state_NS == 'a':
-                self.light_state_NS = 'r'
-                self.light_state_EW = 'v' 
-            elif self.light_state_NS == 'r':
-                self.light_state_NS = 'v'
-                self.light_state_EW = 'r'
+        light_map = {
+            'q0': ("green", "red"),
+            'q1': ("yellow", "red"),
+            'q2': ("red", "red"),
+            'q3': ("red", "green"),
+            'q4': ("red", "yellow"),
+            'q5': ("red", "red")
+        }
+        ns_color, eo_color = light_map.get(state, ("red", "red"))
 
-        if self.light_state_NS != 'r':
-            self.light_state_EW = 'r'
-        elif self.light_state_NS == 'r' and self.light_state_EW != 'a':
-            ew_time_passed = self.ticks_in_current_light
-            ew_v_limit = self.timings['v'] * t_multiplier
-            if ew_time_passed > ew_v_limit:
-                self.light_state_EW = 'a'
-
-        colors = {'v': "green", 'a': "yellow", 'r': "red"}
-        
         self.canvas_traffic.delete("lights")
-        self.canvas_traffic.create_oval(310, 170, 330, 190, fill=colors[self.light_state_NS], tags="lights")
-        self.canvas_traffic.create_oval(470, 330, 490, 350, fill=colors[self.light_state_NS], tags="lights")
-        
-        self.canvas_traffic.create_oval(310, 330, 330, 350, fill=colors[self.light_state_EW], tags="lights")
-        self.canvas_traffic.create_oval(470, 170, 490, 190, fill=colors[self.light_state_EW], tags="lights")
+        self.canvas_traffic.create_oval(210, 210, 230, 230, fill=ns_color, tags="lights")
+        self.canvas_traffic.create_oval(370, 370, 390, 390, fill=ns_color, tags="lights")
+        self.canvas_traffic.create_oval(210, 370, 230, 390, fill=eo_color, tags="lights")
+        self.canvas_traffic.create_oval(370, 210, 390, 230, fill=eo_color, tags="lights")
 
     def run_traffic_tick(self):
         """
-        Ejecuta el bucle de físicas para simulación de movimiento y colas vehiculares.
+        Bucle maestro de simulacion. Incrementa el temporizador, evalua reglas de encolamiento,
+        y delega el cambio de fase al Automata Finito basado en datos reales del sistema.
         """
-        if self.simulation_ticks > self.max_ticks:
-            messagebox.showinfo("Éxito", "Simulación completada.\nObjetivo cumplido: El tráfico fluyó eficientemente sin accidentes.")
-            self.btn_run_traffic.config(state=tk.NORMAL)
+        if not self.is_running:
+            self.entry_timer.config(state=tk.NORMAL)
             return
 
-        self.simulation_ticks += 1
-        self.update_lights()
+        # 1. Contabilizacion de las Filas de Trafico
+        ns_queue = len([c for c in self.cars if c['dir'] == 'NS' and c['y'] < 220])
+        ew_queue = len([c for c in self.cars if c['dir'] == 'EW' and c['x'] < 220])
+        
+        self.lbl_q_ns.config(text=f"Fila N-S: {ns_queue}")
+        self.lbl_q_ew.config(text=f"Fila E-O: {ew_queue}")
 
-        if random.random() < self.spawn_rate:
+        # 2. Control de Estado via Temporizador
+        self.state_ticks += 1
+        if self.state_ticks >= self.timer_limit:
+            next_state = self.automaton.evaluate_transition(ns_queue, ew_queue)
+            self.draw_dfa(active_state=next_state)
+            self.state_ticks = 0
+
+        current_state = self.automaton.current_state
+        self.update_traffic_lights(current_state)
+
+        # 3. Generacion de Vehiculos (RNG Configurable)
+        density_map = {"Poco": 0.02, "Normal": 0.05, "Mucho": 0.12}
+        spawn_rate = density_map.get(self.density_var.get(), 0.05)
+        if random.random() < spawn_rate:
             self.spawn_car()
 
+        # 4. Motor Fisico (Movimiento y Control Anti-Colisiones)
         self.canvas_traffic.delete("car")
-        
-        jam_count = 0
-        intersection_rect = [340, 200, 460, 320]
-        cars_in_intersection = []
-
         for i, car in enumerate(self.cars):
             can_move = True
-            
+
             if car['dir'] == 'NS':
-                if 170 < car['y'] < 190 and self.light_state_NS in ['r', 'a']:
+                if 210 < car['y'] < 230 and current_state not in ['q0']:
                     can_move = False
             elif car['dir'] == 'EW':
-                if 310 < car['x'] < 330 and self.light_state_EW in ['r', 'a']:
+                if 210 < car['x'] < 230 and current_state not in ['q3']:
                     can_move = False
 
             if can_move:
-                for j, other_car in enumerate(self.cars):
-                    if i != j and car['dir'] == other_car['dir']:
-                        if car['dir'] == 'NS':
-                            if 0 < other_car['y'] - car['y'] < 25:
-                                can_move = False
-                                break
-                        elif car['dir'] == 'EW':
-                            if 0 < other_car['x'] - car['x'] < 25:
-                                can_move = False
-                                break
+                for j, other in enumerate(self.cars):
+                    if i != j and car['dir'] == other['dir']:
+                        if car['dir'] == 'NS' and 0 < other['y'] - car['y'] < 26:
+                            can_move = False
+                            break
+                        elif car['dir'] == 'EW' and 0 < other['x'] - car['x'] < 26:
+                            can_move = False
+                            break
 
             if can_move:
                 car['x'] += car['dx']
                 car['y'] += car['dy']
-                car['wait_time'] = 0
-            else:
-                car['wait_time'] += 1
-                if car['wait_time'] > 50: 
-                    jam_count += 1
 
             self.canvas_traffic.create_rectangle(
-                car['x'], car['y'], car['x']+20, car['y']+20, 
-                fill=car['color'], tags="car"
+                car['x'], car['y'], car['x'] + 22, car['y'] + 22,
+                fill=car['color'], outline="black", tags="car"
             )
 
-            if (intersection_rect[0] < car['x'] < intersection_rect[2] and 
-                intersection_rect[1] < car['y'] < intersection_rect[3]):
-                cars_in_intersection.append(car)
-
-        has_ns = any(c['dir'] == 'NS' for c in cars_in_intersection)
-        has_ew = any(c['dir'] == 'EW' for c in cars_in_intersection)
-        
-        if has_ns and has_ew:
-            messagebox.showerror("Accidente", "¡Colisión en la intersección!\nLos tiempos configurados no permitieron un cruce seguro.")
-            self.btn_run_traffic.config(state=tk.NORMAL)
-            return
-
-        if jam_count > 6:
-            messagebox.showwarning("Atasco", "¡Atasco de tráfico severo!\nLa cola vehicular excedió la capacidad (tiempo en verde insuficiente).")
-            self.btn_run_traffic.config(state=tk.NORMAL)
-            return
-
-        self.cars = [c for c in self.cars if 0 <= c['x'] <= 800 and 0 <= c['y'] <= 600]
-        self.root.after(50, self.run_traffic_tick)
+        self.cars = [c for c in self.cars if 0 <= c['x'] <= 600 and 0 <= c['y'] <= 600]
+        self.root.after(40, self.run_traffic_tick)
 
     def spawn_car(self):
         """
-        Genera un vehículo en los extremos de la vía respetando la separación inicial.
+        Inyecta nuevos elementos a la matriz de simulacion considerando disponibilidad de espacio.
         """
         direction = random.choice(['NS', 'EW'])
-        color = random.choice(["#5C6BC0", "#E0E0E0", "#FFA726", "#26C6DA", "#EF5350"])
-        
+        color = random.choice(["#3F51B5", "#4CAF50", "#FF9800", "#E91E63", "#00BCD4"])
+
         if direction == 'NS':
-            car = {'x': 365, 'y': 0, 'dx': 0, 'dy': 5, 'dir': 'NS', 'color': color, 'wait_time': 0}
+            car = {'x': 265, 'y': 0, 'dx': 0, 'dy': 4, 'dir': 'NS', 'color': color}
         else:
-            car = {'x': 0, 'y': 225, 'dx': 5, 'dy': 0, 'dir': 'EW', 'color': color, 'wait_time': 0}
-            
-        space_clear = True
+            car = {'x': 0, 'y': 315, 'dx': 4, 'dy': 0, 'dir': 'EW', 'color': color}
+
+        clear_space = True
         for c in self.cars:
             if c['dir'] == direction:
-                if direction == 'NS' and c['y'] < 25:
-                    space_clear = False
-                elif direction == 'EW' and c['x'] < 25:
-                    space_clear = False
-                    
-        if space_clear:
+                if direction == 'NS' and c['y'] < 26:
+                    clear_space = False
+                elif direction == 'EW' and c['x'] < 26:
+                    clear_space = False
+
+        if clear_space:
             self.cars.append(car)
